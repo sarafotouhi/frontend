@@ -1,0 +1,61 @@
+name: Upload Website
+
+on:
+  push:
+    branches:
+    - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v2
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v1
+        with:
+          node-version: 14.x
+      - name: Install dependencies
+        run: npm install && cd client && npm install
+      - name: Install util
+        run: npm install util
+#       - name: Test
+#         run: npm test
+#         env:
+#           CI: true
+      - name: Generate build
+        run: CI='' npm run build
+        env:
+          REACT_APP_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          REACT_APP_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          REACT_APP_AWS_API: ${{ secrets.AWS_API }}
+      # Share artifact inside workflow
+      - name: Share artifact inside workflow
+        uses: actions/upload-artifact@v1
+        with:
+          name: react-github-actions-build
+          path: client/build
+
+  deploy:
+    runs-on: ubuntu-latest
+    # When application is successfully tested and build has been generated
+    # Then we can start with deployment
+    needs: build
+    steps:
+      # Download previously shared build
+      - name: Get artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: react-github-actions-build
+      # Set the credentials from repository settings/secrets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-default-region: ${{ secrets.AWS_REGION }}
+      # Copy the files from build folder to the S3 bucket
+      - name: Deploy to S3
+        run: aws s3 sync . s3://${{ secrets.AWS_S3_BUCKET }} --acl public-read
+        working-directory: react-github-actions-build
